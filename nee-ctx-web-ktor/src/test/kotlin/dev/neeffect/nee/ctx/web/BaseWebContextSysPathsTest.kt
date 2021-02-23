@@ -20,6 +20,7 @@ import dev.neeffect.nee.effects.security.SecurityErrorType
 import dev.neeffect.nee.effects.security.SecurityProvider
 import dev.neeffect.nee.security.User
 import dev.neeffect.nee.security.UserRole
+import kotlinx.serialization.decodeFromString
 import java.util.*
 import kotlin.random.Random
 
@@ -35,8 +36,8 @@ internal class BaseWebContextSysPathsTest : DescribeSpec({
         it("returns login OK check") {
             val content = engine.handleRequest(HttpMethod.Get, "/sys/currentUser") {
                 this.addHeader(HttpHeaders.Authorization, "testUser ygrek")
-            }.response.content
-            val user = TestSysContext.contexProvider.jacksonMapper.readValue(content, User::class.java)
+            }.response.content!!
+            val user = TestSysContext.contexProvider.jsonMapper.decodeFromString<User>(content)
             user.login shouldBe ("ygrek")
         }
         it("returns login failed login check") {

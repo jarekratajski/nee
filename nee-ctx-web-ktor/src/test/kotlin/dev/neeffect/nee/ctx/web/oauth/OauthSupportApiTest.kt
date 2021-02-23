@@ -1,13 +1,11 @@
 package dev.neeffect.nee.ctx.web.oauth
 
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import dev.neeffect.nee.ctx.web.DefaultJacksonMapper
+import dev.neeffect.nee.ctx.web.util.JsonMapper
 import dev.neeffect.nee.effects.time.HasteTimeProvider
 import dev.neeffect.nee.effects.time.TimeProvider
 import dev.neeffect.nee.security.User
 import dev.neeffect.nee.security.UserRole
 import dev.neeffect.nee.security.jwt.JwtConfig
-import dev.neeffect.nee.security.oauth.GoogleOpenId
 import dev.neeffect.nee.security.oauth.OauthConfig
 import dev.neeffect.nee.security.oauth.OauthProviderName
 import dev.neeffect.nee.security.oauth.OauthService
@@ -22,8 +20,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
-import io.ktor.client.features.json.JacksonSerializer
 import io.ktor.client.features.json.JsonFeature
+import io.ktor.client.features.json.JsonSerializer
+import io.ktor.client.features.json.serializer.KotlinxSerializer
 import io.ktor.features.ContentNegotiation
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -31,15 +30,16 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.http.parseUrlEncodedParameters
-import io.ktor.jackson.jackson
 import io.ktor.routing.routing
+import io.ktor.serialization.*
 import io.ktor.server.testing.TestApplicationEngine
 import io.ktor.server.testing.createTestEnvironment
 import io.ktor.server.testing.handleRequest
 import io.ktor.server.testing.setBody
-import io.vavr.jackson.datatype.VavrModule
 import io.vavr.kotlin.hashMap
 import io.vavr.kotlin.option
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -70,7 +70,7 @@ internal class OauthSupportApiTest : DescribeSpec({
                 "/oauth/loginUser/Google"
 
             ) {
-                this.setBody(DefaultJacksonMapper.mapper.writeValueAsString(oauthData))
+                this.setBody(JsonMapper.default.encodeToString(oauthData))
                 this.addHeader(HttpHeaders.ContentType, ContentType.Application.Json.toString())
             }.response.content
             content shouldContain ("encodedToken")
@@ -106,7 +106,10 @@ internal class OauthSupportApiTest : DescribeSpec({
         //TODO this is copied
         val testHttpClient = HttpClient(MockEngine) {
             install(JsonFeature) {
-                serializer = JacksonSerializer()
+                serializer = KotlinxSerializer( Json {
+                    isLenient = true
+                    ignoreUnknownKeys = true
+                })
             }
             engine {
                 addHandler { request ->
@@ -141,10 +144,7 @@ internal class OauthSupportApiTest : DescribeSpec({
         fun installTestApp(app: Application) {
             app.routing {
                 install(ContentNegotiation) {
-                    jackson {
-                        this.registerModule(VavrModule())
-                        this.registerModule(KotlinModule())
-                    }
+                    json()
                 }
                 oauthSupportApi.oauthApi()()
             }

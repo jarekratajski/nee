@@ -6,7 +6,6 @@ dependencies {
     }
     api(Libs.Haste.haste)
 
-    implementation(Libs.Jackson.jacksonAnnotations)
     implementation (Libs.Kotlin.kotlinStdLib)
     testImplementation(project(":nee-test:nee-core-test"))
     testImplementation (Libs.Kotest.runnerJunit5Jvm)

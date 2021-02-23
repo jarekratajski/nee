@@ -4,16 +4,14 @@ import dev.neeffect.nee.effects.time.HasteTimeProvider
 import dev.neeffect.nee.effects.time.TimeProvider
 import dev.neeffect.nee.security.User
 import dev.neeffect.nee.security.UserRole
-import dev.neeffect.nee.security.jwt.SimpleUserCoder
-import dev.neeffect.nee.security.jwt.JwtCoder
 import dev.neeffect.nee.security.jwt.JwtConfig
 import dev.neeffect.nee.security.jwt.JwtConfigurationModule
-import dev.neeffect.nee.security.jwt.JwtUsersCoder
+import dev.neeffect.nee.security.jwt.SimpleUserCoder
 import dev.neeffect.nee.security.jwt.UserCoder
 import dev.neeffect.nee.security.state.ServerVerifier
 import io.ktor.client.HttpClient
-import io.ktor.client.features.json.JacksonSerializer
 import io.ktor.client.features.json.JsonFeature
+import io.ktor.client.features.json.serializer.KotlinxSerializer
 import io.vavr.collection.Seq
 import io.vavr.kotlin.list
 import java.security.KeyPair
@@ -42,7 +40,10 @@ abstract class OauthConfigModule<USER, ROLE>(
     open val httpClient by lazy {
         HttpClient() {
             install(JsonFeature) { //TODO - move it so that it is tested (it was not)
-                serializer = JacksonSerializer()
+                serializer =  KotlinxSerializer(kotlinx.serialization.json.Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                })
             }
         }
     }

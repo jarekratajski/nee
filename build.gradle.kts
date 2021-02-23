@@ -22,6 +22,7 @@ plugins {
     signing
     id("org.jetbrains.dokka") version "0.10.1"
     id("com.bmuschko.nexus") version "2.3.1"
+    id("org.jetbrains.kotlin.plugin.serialization") version Libs.Kotlin.version apply false
 }
 
 repositories {

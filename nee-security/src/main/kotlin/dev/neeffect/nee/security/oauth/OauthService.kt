@@ -1,15 +1,18 @@
+@file:UseSerializers(VavrSerializers.OptionSerializer::class)
 package dev.neeffect.nee.security.oauth
 
 import dev.neeffect.nee.Nee
 import dev.neeffect.nee.NoEffect
 import dev.neeffect.nee.effects.Out
 import dev.neeffect.nee.effects.security.SecurityErrorType
-import dev.neeffect.nee.security.jwt.JWTError
 import dev.neeffect.nee.security.oauth.config.GithubOAuth
+import dev.neeffect.nee.serializers.VavrSerializers
 import io.vavr.control.Either
 import io.vavr.control.Option
 import io.vavr.kotlin.some
 import io.vavr.kotlin.toVavrMap
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.UseSerializers
 
 class OauthService<USER, ROLE>(private val oauthConfig: OauthConfigModule<USER, ROLE>) {
 
@@ -61,6 +64,7 @@ class OauthService<USER, ROLE>(private val oauthConfig: OauthConfigModule<USER, 
 
 }
 
+@Serializable
 data class LoginResult(
     val encodedToken: String,
     val displayName: Option<String>,

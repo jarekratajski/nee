@@ -1,8 +1,8 @@
 package dev.neeffect.nee.ctx.web.oauth
 
 import dev.neeffect.nee.ctx.web.DefaultErrorHandler
-import dev.neeffect.nee.ctx.web.DefaultJacksonMapper
 import dev.neeffect.nee.ctx.web.util.ApiError
+import dev.neeffect.nee.ctx.web.util.JsonMapper
 import dev.neeffect.nee.ctx.web.util.RenderHelper
 import dev.neeffect.nee.effects.Out
 import dev.neeffect.nee.effects.security.SecurityErrorType
@@ -23,11 +23,11 @@ import io.ktor.util.pipeline.PipelineContext
 import io.vavr.control.Either
 import io.vavr.control.Try
 import io.vavr.kotlin.option
-import kotlinx.coroutines.Dispatchers
+import  kotlinx.serialization.Serializable
 
 class OauthSupportApi(private val oauthService: OauthService<User, UserRole>) {
 
-    private val renderHelper = RenderHelper(DefaultJacksonMapper.mapper, DefaultErrorHandler)
+    private val renderHelper = RenderHelper(JsonMapper.default, DefaultErrorHandler)
 
     fun oauthApi(): Route.() -> Unit = {
 
@@ -45,7 +45,6 @@ class OauthSupportApi(private val oauthService: OauthService<User, UserRole>) {
                 renderHelper.renderResponse(call, result)
             }
             post("/loginUser/{provider}") {
-
                 val loginData  = call.receive<OauthLoginData>()
                 val result = extractProvider().map { provider ->
                     oauthService.login(loginData.code, loginData.state, loginData.redirectUri, provider)
@@ -72,7 +71,7 @@ class OauthSupportApi(private val oauthService: OauthService<User, UserRole>) {
         }
 }
 
-
+@Serializable
 data class OauthLoginData(
     val code: String,
     val state: String,

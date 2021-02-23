@@ -1,11 +1,12 @@
+@file:UseSerializers(VavrSerializers.OptionSerializer::class, VavrSerializers.ListSerializer::class)
 package dev.neeffect.nee.ctx.web.util
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import dev.neeffect.nee.ctx.web.ErrorHandler
 import dev.neeffect.nee.effects.Out
 import dev.neeffect.nee.effects.utils.Logging
 import dev.neeffect.nee.effects.utils.logger
 import dev.neeffect.nee.effects.utils.merge
+import dev.neeffect.nee.serializers.VavrSerializers
 import io.ktor.application.ApplicationCall
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -15,10 +16,14 @@ import io.ktor.http.content.TextContent
 import io.ktor.response.respond
 import io.vavr.control.Either
 import kotlinx.coroutines.future.await
+import kotlinx.serialization.UseSerializers
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class  RenderHelper(
-    val objectMapper: ObjectMapper,
-    val errorHandler: ErrorHandler) : Logging {
+    val jsonMapper: Json,
+    private val errorHandler: ErrorHandler
+) : Logging {
 
     suspend fun renderText(call: ApplicationCall, text:String) =
         TextContent(
@@ -50,10 +55,11 @@ class  RenderHelper(
                  call.respond(content)
         }
 
-    suspend fun <E, A> serveMessage(applicationCall:ApplicationCall, msg: Out<E, A>): Unit =
+    suspend inline fun <E, reified A> serveMessage(applicationCall:ApplicationCall, msg: Out<E, A>): Unit =
         msg.toFuture().toCompletableFuture().await().let { outcome ->
             val message = outcome.bimap<OutgoingContent, OutgoingContent>({ serveError(it as Any) }, { regularResult ->
-                val bytes = objectMapper.writeValueAsBytes(regularResult)
+                val bytes = jsonMapper.encodeToString(regularResult).toByteArray()
+               // val bytes = objectMapper.writeValueAsBytes(regularResult)
                 ByteArrayContent(
                     bytes = bytes,
                     contentType = ContentType.Application.Json,
@@ -84,7 +90,7 @@ class  RenderHelper(
         }
 
 
-    internal fun serveError(errorResult: Any): OutgoingContent = errorHandler(errorResult)
+    fun serveError(errorResult: Any): OutgoingContent = errorHandler(errorResult)
 
 }
 

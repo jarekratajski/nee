@@ -1,7 +1,6 @@
+@file:UseSerializers(VavrSerializers.OptionSerializer::class, VavrSerializers.ListSerializer::class)
 package dev.neeffect.nee.security.oauth
 
-import com.fasterxml.jackson.annotation.JsonCreator
-import com.fasterxml.jackson.annotation.JsonProperty
 import dev.neeffect.nee.Nee
 import dev.neeffect.nee.NoEffect
 import dev.neeffect.nee.effects.Out
@@ -10,6 +9,7 @@ import dev.neeffect.nee.effects.security.SecurityErrorType
 import dev.neeffect.nee.effects.utils.Logging
 import dev.neeffect.nee.effects.utils.logger
 import dev.neeffect.nee.security.jwt.MultiVerifier
+import dev.neeffect.nee.serializers.VavrSerializers
 import io.fusionauth.jwks.JSONWebKeySetHelper
 import io.fusionauth.jwks.domain.JSONWebKey
 import io.fusionauth.jwt.Verifier
@@ -17,24 +17,28 @@ import io.fusionauth.jwt.domain.JWT
 import io.fusionauth.jwt.json.Mapper
 import io.fusionauth.jwt.rsa.RSAVerifier
 import io.ktor.client.request.forms.submitForm
-import io.ktor.client.request.header
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
 import io.ktor.http.Parameters
 import io.vavr.concurrent.Future
 import io.vavr.control.Either
 import io.vavr.control.Option
 import io.vavr.control.Try
-import io.vavr.kotlin.list
-import io.vavr.kotlin.none
 import io.vavr.kotlin.option
 import io.vavr.kotlin.toVavrList
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.future.future
-import java.lang.IllegalStateException
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.UseSerializers
+
+
+
 import java.net.URL
 import java.security.interfaces.RSAPublicKey
 import java.util.concurrent.CompletableFuture
+
+
+
+
 
 interface OauthProvider {
     fun generateApiCall(redirect: String): String
@@ -126,9 +130,7 @@ class GoogleOpenId<USER, ROLE>(
                 encodeInQuery = false,
 
                 )
-//            {
-//                header(HttpHeaders.Accept, ContentType.Application.Json.toString())
-//            }
+
             result
         } catch (e: Exception) {
             logger().warn(e.message, e)
@@ -153,29 +155,27 @@ class GoogleOpenId<USER, ROLE>(
 
 }
 
+
+
+@Serializable
 data class OauthTokens(
-    @JsonProperty("access_token")
+    @SerialName("access_token")
     val accessToken: String,
-    @JsonProperty("id_token")
+    @SerialName("id_token")
     val idToken: Option<String> = Option.none(),
+    @SerialName("refresh_token")
     val refreshToken: Option<String> = Option.none(),
+    @SerialName("expires_in")
     val expiresIn: String = "0", //TODO
     val scope: String = "",
     val tokenType: String = ""
 ) {
-    @JsonCreator
     constructor(
-        @JsonProperty("access_token")
         accessToken: String,
-        @JsonProperty("id_token")
         idToken: String? = null,
-        @JsonProperty("refresh_token")
         refreshToken: String? = null,
-        @JsonProperty("expires_in")
         expiresIn: String = "0",
-        @JsonProperty("scope")
         scope: String = "",
-        @JsonProperty("token_type")
         tokenType: String = ""
     ) : this(accessToken, idToken.option(), refreshToken.option(), expiresIn, scope, tokenType)
 }

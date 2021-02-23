@@ -22,8 +22,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
-import io.ktor.client.features.json.JacksonSerializer
 import io.ktor.client.features.json.JsonFeature
+import io.ktor.client.features.json.serializer.KotlinxSerializer
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
@@ -36,7 +36,6 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.util.*
-import kotlin.collections.HashMap
 
 internal class GoogleOpenIdTest : DescribeSpec({
     describe("gooogle open id") {
@@ -98,7 +97,7 @@ internal class GoogleOpenIdTest : DescribeSpec({
 
         val testHttpClient = HttpClient(MockEngine) {
             install(JsonFeature) {
-                serializer = JacksonSerializer()
+                serializer = KotlinxSerializer()
             }
             engine {
                 addHandler { request ->

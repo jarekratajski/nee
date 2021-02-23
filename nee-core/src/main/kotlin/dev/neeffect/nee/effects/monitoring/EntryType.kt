@@ -1,8 +1,6 @@
 package dev.neeffect.nee.effects.monitoring
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME)
 sealed class EntryType {
     object Begin : EntryType()
 

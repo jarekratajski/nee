@@ -1,7 +1,5 @@
 package dev.neeffect.nee.ctx.web
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import dev.neeffect.nee.Effect
 import io.ktor.application.ApplicationCall
 import io.ktor.application.call
@@ -14,13 +12,11 @@ import io.ktor.routing.Route
 import io.ktor.routing.get
 import io.ktor.routing.route
 import io.vavr.collection.List
-import io.vavr.jackson.datatype.VavrModule
 import io.vavr.kotlin.option
 import io.vavr.kotlin.toVavrList
 import dev.neeffect.nee.Nee
 import dev.neeffect.nee.NoEffect
-import dev.neeffect.nee.andThen
-import dev.neeffect.nee.anyError
+import dev.neeffect.nee.ctx.web.util.JsonMapper
 import dev.neeffect.nee.effects.async.AsyncEffect
 import dev.neeffect.nee.effects.async.ECProvider
 import dev.neeffect.nee.effects.async.ExecutionContextProvider
@@ -47,8 +43,10 @@ import dev.neeffect.nee.security.User
 import dev.neeffect.nee.security.UserRealm
 import dev.neeffect.nee.security.UserRole
 import dev.neeffect.nee.with
+import kotlinx.serialization.json.Json
 import java.sql.Connection
 import java.util.concurrent.Executors
+import kotlinx.serialization.encodeToString
 
 class EffectsInstance<R, G : TxProvider<R, G>> {
 
@@ -122,8 +120,6 @@ interface WebContextProvider<R, G : TxProvider<R, G>> {
 
     }
 
-    fun jacksonMapper() : ObjectMapper
-
 
     fun <E, A> async(func: () -> Nee<WebContext<R,G>, E, A>) : Nee<WebContext<R,G>, Any, A> =
         CodeNameFinder.guessCodePlaceName(2).let { whereItIsDefined ->
@@ -133,6 +129,8 @@ interface WebContextProvider<R, G : TxProvider<R, G>> {
             }
             z.anyError().flatMap { it.anyError()}
         }
+
+    val jsonMapper: Json
 }
 
 abstract class BaseWebContextProvider<R, G : TxProvider<R, G>> : WebContextProvider<R, G> {
@@ -161,8 +159,6 @@ abstract class BaseWebContextProvider<R, G : TxProvider<R, G>> : WebContextProvi
             call
         )
 
-    override fun jacksonMapper(): ObjectMapper = jacksonMapper
-
     open val logger by lazy {
         MutableInMemLogger()
     }
@@ -180,13 +176,13 @@ abstract class BaseWebContextProvider<R, G : TxProvider<R, G>> : WebContextProvi
         SimpleTraceProvider(traceResource)
     }
 
-    open val jacksonMapper by lazy {
-        DefaultJacksonMapper.mapper
+    override  val jsonMapper by lazy {
+       JsonMapper.default
     }
 
     override fun monitoringApi(): Route.() -> Unit = {
         get("logs") {
-            val bytes = jacksonMapper().writeValueAsBytes(logger.getLogs())
+            val bytes = jsonMapper.encodeToString(logger.getLogs()).toByteArray()
             call.respond(ByteArrayContent(
                 bytes = bytes,
                 contentType = ContentType.Application.Json,
@@ -194,7 +190,7 @@ abstract class BaseWebContextProvider<R, G : TxProvider<R, G>> : WebContextProvi
             ))
         }
         get("report") {
-            val bytes = jacksonMapper().writeValueAsBytes(logger.getReport())
+            val bytes = jsonMapper.encodeToString(logger.getReport()).toByteArray()
             call.respond(ByteArrayContent(
                 bytes = bytes,
                 contentType = ContentType.Application.Json,
@@ -230,8 +226,3 @@ abstract class JDBCBasedWebContextProvider :
 }
 
 
-object DefaultJacksonMapper {
-    val mapper = ObjectMapper()
-        .registerModule(VavrModule())
-        .registerModule(KotlinModule())
-}
