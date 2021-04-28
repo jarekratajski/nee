@@ -1,34 +1,25 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-buildscript {
-    repositories {
-        mavenLocal()
-        mavenCentral()
-        jcenter()
-    }
-
-    dependencies {
-        classpath(kotlin("gradle-plugin", version = "1.4.0"))
-    }
-}
-
 plugins {
-    java
-    id("io.gitlab.arturbosch.detekt").version("1.5.0")
-    `kotlin-dsl` //TODO - read about it
+    //java //- not needed probably
+    kotlin("jvm") version "1.4.32"
+    id("io.gitlab.arturbosch.detekt").version("1.16.0")
+    //`kotlin-dsl` //TODO - read about it
     id("jacoco")
     id("maven-publish")
-    id("java-library")
+    // id("java-library")//  - not needed probably
     signing
     id("org.jetbrains.dokka") version "0.10.1"
     id("com.bmuschko.nexus") version "2.3.1"
+    id("io.codearte.nexus-staging") version "0.22.0"
 }
 
 repositories {
+    mavenLocal()
     jcenter()
 }
 
-allprojects {
+subprojects {
     apply(plugin = "kotlin")
     apply(plugin = "java")
     apply(plugin = "maven-publish")
@@ -39,8 +30,11 @@ allprojects {
     version = Ci.publishVersion
 
     dependencies {
+        detektPlugins("pl.setblack:kure-potlin:0.5.0")
+        detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.15.0")
         // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
         implementation(Libs.Slf4J.api)
+        implementation(Libs.Kotlin.coroutinesJdk8)
     }
 
     repositories {
@@ -84,7 +78,6 @@ allprojects {
     }
 
     detekt {
-        failFast = true // fail build on any finding
         buildUponDefaultConfig = true // preconfigure defaults
         config = files("${rootDir}/config/detekt.yml")
         //baseline = file("$projectDir/config/baseline.xml")
@@ -96,24 +89,19 @@ allprojects {
         }
     }
 
-//    java {
-//        withSourcesJar()
-//        withJavadocJar()
-//    }
+    tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+        this.jvmTarget = "1.8"
+    }
 }
 
-
 tasks.register<JacocoReport>("generateMergedReport") {
-    //dependsOn(subprojects.test)
     dependsOn(subprojects.map { it.getTasksByName("test", false) })
     additionalSourceDirs.setFrom(files(subprojects.map { it.sourceSets.asMap["main"]?.allSource?.srcDirs }))
     sourceDirectories.setFrom(files(subprojects.map { it.sourceSets.asMap["main"]?.allSource?.srcDirs }))
     classDirectories.setFrom(files(subprojects.map { it.sourceSets.asMap["main"]?.output }))
     //line below if fishy
     executionData.setFrom(project.fileTree(Pair("dir", "."), Pair("include", "**/build/jacoco/test.exec")))
-//    sourceDirectories.setFrom files(subprojects.sourceSets.main.allSource.srcDirs)
-//    classDirectories.setFrom files(subprojects.sourceSets.main.output)
-//    executionData.setFrom project.fileTree(dir = ".", include = "**/build/jacoco/test.exec")
+
     reports {
         xml.isEnabled = true
         csv.isEnabled = false
@@ -128,5 +116,8 @@ allprojects {
     }
 }
 
+nexusStaging {
+    packageGroup = "pl.setblack" //optional if packageGroup == project.getGroup()
+}
 
 val publications: PublicationContainer = (extensions.getByName("publishing") as PublishingExtension).publications

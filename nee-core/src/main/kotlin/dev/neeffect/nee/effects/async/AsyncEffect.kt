@@ -1,16 +1,16 @@
 package dev.neeffect.nee.effects.async
 
-import io.vavr.concurrent.Future
-import io.vavr.concurrent.Promise
-import io.vavr.control.Either
-import io.vavr.control.Option
 import dev.neeffect.nee.Effect
 import dev.neeffect.nee.effects.Out
 import dev.neeffect.nee.effects.utils.Logging
 import dev.neeffect.nee.effects.utils.logger
-import java.lang.Exception
-import java.lang.RuntimeException
+import io.vavr.concurrent.Future
+import io.vavr.concurrent.Promise
+import io.vavr.control.Either
+import io.vavr.control.Option
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Technical interface for threading model.
@@ -41,6 +41,7 @@ class SyncExecutionContext : ExecutionContext {
         Future.successful(f())
 }
 
+@Suppress("ReturnUnit")
 object InPlaceExecutor : Executor {
     override fun execute(command: Runnable) = command.run()
 }
@@ -55,11 +56,22 @@ object NoGoExecutor : Executor {
 }
  */
 
-class ExecutorExecutionContext(private val executor: Executor) : ExecutionContext {
+class ExecutorExecutionContext(private val executor: Executor) : ExecutionContext, Logging {
+    @Suppress("TooGenericExceptionCaught")
     override fun <T> execute(f: () -> T): Future<T> =
         Promise.make<T>(InPlaceExecutor).let { promise ->
             executor.execute {
-                promise.success(f())
+                // LESSON not property handled exception
+                try {
+                    val result = f()
+                    promise.success(result)
+                } catch (e: Exception) {
+                    // NO TEST
+                    promise.failure(e)
+                } catch (e: Throwable) {
+                    logger().error("Unhandled throwable in executor", e)
+                    promise.failure(e)
+                }
             }
             promise.future()
         }
@@ -84,24 +96,45 @@ class ECProvider(private val ectx: ExecutionContext, private val localWins: Bool
 class AsyncEffect<R : ExecutionContextProvider>(
     val localExecutionContext: Option<ExecutionContext> = Option.none()
 ) : Effect<R, Nothing>, Logging {
-    override fun <A, P> wrap(f: (R) -> (P) -> A): (R) -> Pair<(P) -> Out<Nothing, A>, R> =
+
+    @Suppress("TooGenericExceptionCaught", "ThrowExpression")
+    override fun <A> wrap(f: (R) -> A): (R) -> Pair<Out<Nothing, A>, R> =
         { r: R ->
-            Pair({ p: P ->
+            val asyncNmb = asyncCounter.getAndIncrement()
+
+            Pair(run {
                 val ec = r.findExecutionContext(this.localExecutionContext)
+                logger().debug("initiated async ($asyncNmb)")
                 val async = AsyncSupport.initiateAsync(r)
                 val result = ec.execute {
+                    logger().debug("started async ($asyncNmb)")
                     try {
-                        f(r)(p)
-                    } catch (e: Exception) {
+                        f(r)
+                    } catch (e: Throwable) {
                         logger().error("error in async handling", e)
-                        throw RuntimeException(e)
+                        throw e
+                    } finally {
+                        logger().debug("done async ($asyncNmb)")
                     }
                 }
                 Out.FutureOut(result.map {
                     Either.right<Nothing, A>(it.also {
+                        logger().debug("cleaning async ($asyncNmb)")
                         async.closeAsync(r)
                     })
                 })
             }, r)
         }
+
+    companion object {
+        private val asyncCounter = AtomicLong()
+    }
+}
+
+class ThreadedExecutionContextProvider(threads: Int = 4)  : ExecutionContextProvider {
+    val executor = Executors.newFixedThreadPool(threads)
+    val executorUsingContext = ExecutorExecutionContext(executor)
+    override fun findExecutionContext(local: Option<ExecutionContext>): ExecutionContext
+    = local.getOrElse(executorUsingContext)
+
 }

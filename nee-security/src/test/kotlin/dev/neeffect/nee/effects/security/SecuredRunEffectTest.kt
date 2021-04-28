@@ -1,19 +1,21 @@
 package dev.neeffect.nee.effects.security
 
-import io.kotest.matchers.shouldBe
-import io.kotest.core.spec.style.BehaviorSpec
-import io.vavr.collection.List
 import dev.neeffect.nee.Nee
+import dev.neeffect.nee.effects.flatMap
+import dev.neeffect.nee.effects.toFuture
+import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.matchers.shouldBe
+import io.vavr.collection.List
 
 internal class SecuredRunEffectTest : BehaviorSpec({
 
     Given("secure provider") {
 
         val secEffect = SecuredRunEffect<String, String, SimpleSecurityProvider<String, String>>("test")
-        val f = Nee.constP(secEffect, businessFunction)
+        val f = Nee.with(secEffect, businessFunction)
         When("function called with test user ") {
             val testSecurityProvider = SimpleSecurityProvider<String, String>("test", List.of("test"))
-            val result = f.perform(testSecurityProvider)(Unit)
+            val result = f.perform(testSecurityProvider)
                 .flatMap { it }
             Then("called with correct user") {
                 result.toFuture().get().get() shouldBe "called by: test"
@@ -21,7 +23,7 @@ internal class SecuredRunEffectTest : BehaviorSpec({
         }
         When("function called without roles test user ") {
             val testSecurityProvider = SimpleSecurityProvider<String, String>("test", List.empty())
-            val result = f.perform(testSecurityProvider)(Unit)
+            val result = f.perform(testSecurityProvider)
                 .flatMap { it }
             Then("function is not called") {
                 result.toFuture().get().isLeft shouldBe true

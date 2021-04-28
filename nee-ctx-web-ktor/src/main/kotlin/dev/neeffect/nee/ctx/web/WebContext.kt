@@ -1,92 +1,60 @@
 package dev.neeffect.nee.ctx.web
 
-import io.ktor.application.ApplicationCall
-import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.content.ByteArrayContent
-import io.ktor.http.content.OutgoingContent
-import io.ktor.http.content.TextContent
-import io.ktor.response.respond
-import kotlinx.coroutines.future.await
-import kotlinx.coroutines.runBlocking
 import dev.neeffect.nee.ANee
-import dev.neeffect.nee.Nee
+import dev.neeffect.nee.ctx.web.util.RenderHelper
 import dev.neeffect.nee.effects.Out
+import dev.neeffect.nee.effects.async.AsyncEnvWrapper
+import dev.neeffect.nee.effects.async.AsyncSupport
 import dev.neeffect.nee.effects.async.ExecutionContextProvider
-import dev.neeffect.nee.effects.monitoring.CodeNameFinder
 import dev.neeffect.nee.effects.monitoring.TraceProvider
 import dev.neeffect.nee.effects.monitoring.TraceResource
 import dev.neeffect.nee.effects.security.SecurityProvider
+import dev.neeffect.nee.effects.time.TimeProvider
 import dev.neeffect.nee.effects.tx.TxConnection
 import dev.neeffect.nee.effects.tx.TxProvider
 import dev.neeffect.nee.effects.utils.Logging
-import dev.neeffect.nee.effects.utils.logger
-import dev.neeffect.nee.effects.utils.merge
 import dev.neeffect.nee.security.User
 import dev.neeffect.nee.security.UserRole
-
+import io.ktor.application.ApplicationCall
 
 data class WebContext<R, G : TxProvider<R, G>>(
     private val jdbcProvider: TxProvider<R, G>,
     private val securityProvider: SecurityProvider<User, UserRole>,
     private val executionContextProvider: ExecutionContextProvider,
     private val errorHandler: ErrorHandler = DefaultErrorHandler,
-    private val contextProvider: WebContextProvider<R,G>,
+    private val contextProvider: WebContextProvider<R, G>,
     private val traceProvider: TraceProvider<*>,
-    private val applicationCall: ApplicationCall
-) : TxProvider<R, WebContext<R,G>>,
+    private val timeProvider: TimeProvider,
+    private val applicationCall: ApplicationCall,
+    private val asyncEnv: AsyncEnvWrapper<WebContext<R, G>> = AsyncEnvWrapper()
+) : TxProvider<R, WebContext<R, G>>,
     SecurityProvider<User, UserRole> by securityProvider,
     ExecutionContextProvider by executionContextProvider,
-    TraceProvider<WebContext<R,G>>,
-    Logging {
+    TraceProvider<WebContext<R, G>>,
+    TimeProvider by timeProvider,
+    Logging,
+    AsyncSupport<WebContext<R, G>> by asyncEnv {
+
+    private val renderHelper = RenderHelper(contextProvider.jacksonMapper(), errorHandler)
+
     override fun getTrace(): TraceResource = traceProvider.getTrace()
 
-
     override fun setTrace(newState: TraceResource): WebContext<R, G> =
-       this.copy(traceProvider = traceProvider.setTrace(newState))
-
+        this.copy(traceProvider = traceProvider.setTrace(newState))
 
     override fun getConnection(): TxConnection<R> = jdbcProvider.getConnection()
 
     override fun setConnectionState(newState: TxConnection<R>) =
-        this.copy( jdbcProvider = jdbcProvider.setConnectionState(newState))
+        this.copy(jdbcProvider = jdbcProvider.setConnectionState(newState))
 
-
-    fun <P> serveText(businessFunction: ANee<WebContext<R,G>, P, String>, param: P) =
-        businessFunction.perform(this)(param)
-            .onComplete { outcome ->
-                val message = outcome.bimap<OutgoingContent,OutgoingContent>(::serveError, { regularResult ->
-                    TextContent(
-                        text = regularResult,
-                        contentType = ContentType.Text.Plain,
-                        status = HttpStatusCode.OK
-                    )
-                }).merge()
-                runBlocking { applicationCall.respond(message) }
-            }
-
-    suspend fun <E,A> serveMessage(msg : Out<E, A>) : Unit =
-        msg.toFuture().toCompletableFuture().await().let { outcome ->
-            val message = outcome.bimap<OutgoingContent,OutgoingContent>({ serveError(it as Any) }, { regularResult ->
-                val bytes = contextProvider.jacksonMapper().writeValueAsBytes(regularResult)
-                ByteArrayContent(
-                    bytes = bytes,
-                    contentType = ContentType.Application.Json,
-                    status = HttpStatusCode.OK
-                )
-            }).merge()
-            try {
-                applicationCall.respond(message)
-            } catch (e: Exception) {
-                logger().warn("exception in sending response", e)
-            }
+    suspend fun serveText(businessFunction: ANee<WebContext<R, G>, String>) =
+        businessFunction.perform(this).let { result ->
+            renderHelper.serveText(applicationCall, result)
         }
 
-    suspend fun <P> serveMessage(businessFunction: ANee<WebContext<R,G>, P, Any>, param: P) =
-        serveMessage(businessFunction.perform(this)(param))
+    suspend fun <E, A> serveMessage(msg: Out<E, A>): Unit =
+        renderHelper.serveMessage(applicationCall, msg)
 
-    private fun serveError(errorResult: Any): OutgoingContent = errorHandler(errorResult)
-
+    suspend fun serveMessage(businessFunction: ANee<WebContext<R, G>, Any>) =
+        serveMessage(businessFunction.perform(this))
 }
-
-

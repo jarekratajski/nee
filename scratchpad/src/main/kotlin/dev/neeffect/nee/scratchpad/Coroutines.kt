@@ -1,14 +1,10 @@
 package dev.neeffect.nee.scratchpad
 
-import kotlinx.coroutines.*
-
-
-//public fun <T,R,E> CoroutineScope.eff(
-//        effect : Effect<R,E>,
-//        block: suspend CoroutineScope.() -> T) : NEE<R, E, Unit, T> {
-//
-//}
-
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 
 fun main() {
     val deferredResult: Deferred<String> = GlobalScope.async {

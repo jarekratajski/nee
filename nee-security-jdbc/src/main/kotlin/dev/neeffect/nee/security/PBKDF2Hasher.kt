@@ -1,7 +1,6 @@
 package dev.neeffect.nee.security
 
 import dev.neeffect.nee.security.PBKDF2Hasher.HashParams.algorithm
-import dev.neeffect.nee.security.PBKDF2Hasher.HashParams.algorithmName
 import dev.neeffect.nee.security.PBKDF2Hasher.HashParams.iterationCount
 import dev.neeffect.nee.security.PBKDF2Hasher.HashParams.keyLength
 import javax.crypto.SecretKeyFactory
@@ -23,5 +22,3 @@ class PBKDF2Hasher {
         val algorithm = SecretKeyFactory.getInstance(algorithmName)
     }
 }
-
-

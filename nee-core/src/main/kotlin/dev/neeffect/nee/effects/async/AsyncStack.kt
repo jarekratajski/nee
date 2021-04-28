@@ -1,10 +1,10 @@
 package dev.neeffect.nee.effects.async
 
-import io.vavr.collection.List
-import io.vavr.collection.Seq
 import dev.neeffect.nee.effects.env.ResourceId
 import dev.neeffect.nee.effects.utils.Logging
 import dev.neeffect.nee.effects.utils.logger
+import io.vavr.collection.List
+import io.vavr.collection.Seq
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference
 interface AsyncSupport<R> {
     fun asyncStack(): AsyncStack<R>
 
-    fun setAsyncStack(newState: AsyncStack<R>): Unit
+    fun setAsyncStack(oldState: AsyncStack<R>, newState: AsyncStack<R>): Unit
 
     companion object {
         val asyncResouce = ResourceId(AsyncStack::class)
@@ -23,7 +23,7 @@ interface AsyncSupport<R> {
             is AsyncSupport<*> -> (env as AsyncSupport<R>).let { async ->
                 val stack = async.asyncStack()
                 val newStack = stack.doOnCleanUp(action)
-                async.setAsyncStack(newStack)
+                async.setAsyncStack(stack, newStack)
                 SthToClean(newStack)
             }
             else -> {
@@ -40,7 +40,7 @@ interface AsyncSupport<R> {
                     val async = (env as AsyncSupport<R>)
                     val stack = async.asyncStack()
                     val asyncStack = stack.enterAsync()
-                    async.setAsyncStack(asyncStack)
+                    async.setAsyncStack(stack, asyncStack)
                     ActiveAsyncClose(asyncStack)
                 }
                 else -> ActiveAsyncClose(CleanAsyncStack<R>().enterAsync())
@@ -53,17 +53,17 @@ interface AsyncSupport<R> {
  */
 class ActiveAsyncClose<R>(private val asyncClean: ActiveAsynStack<R>) {
     @Suppress("UNCHECKED_CAST")
-    fun closeAsync(env: R) =
+    fun closeAsync(env: R): R =
         when (env) {
             is AsyncSupport<*> -> {
                 val async = env as AsyncSupport<R>
                 val stack = async.asyncStack()
                 if (stack == asyncClean) {
                     val res = asyncClean.closeAsync(env)
-                    async.setAsyncStack(res.first)
+                    async.setAsyncStack(stack, res.first)
                     res.second
                 } else {
-                    doNothing(env)
+                    doNothing(async) as R
                 }
             }
             else ->
@@ -71,7 +71,7 @@ class ActiveAsyncClose<R>(private val asyncClean: ActiveAsynStack<R>) {
         }
 }
 
-internal class SthToClean<R>(val asyncClean: DirtyAsyncStack<R>) {
+internal class SthToClean<R>(val asyncClean: ActiveAsynStack<R>) {
     @Suppress("UNCHECKED_CAST")
     fun cleanUp(env: R) =
         when (env) {
@@ -79,21 +79,10 @@ internal class SthToClean<R>(val asyncClean: DirtyAsyncStack<R>) {
                 val async = env as AsyncSupport<R>
                 val stack = env.asyncStack()
                 if (stack != asyncClean) {
-                    //someone messed in the middle
-                    when (stack) {
-                        is DirtyAsyncStack<R> -> {
-                            //TODO this is strange
-                            val newStack = stack.cleanUp(env)
-                            async.setAsyncStack(newStack.first)
-                            newStack.second
-                        }
-                        else -> {
-                            doNothing(env)
-                        }
-                    }
+                    env
                 } else {
                     val newStack = asyncClean.cleanUp(env)
-                    async.setAsyncStack(newStack.first)
+                    async.setAsyncStack(stack, newStack.first)
                     newStack.second
                 }
             }
@@ -103,24 +92,23 @@ internal class SthToClean<R>(val asyncClean: DirtyAsyncStack<R>) {
 
 fun <R> doNothing(env: R) = env
 
-fun <R, T> executeAsyncCleaning(env: R, action: () -> T, cleanAction: (R) -> R): T {
-    val closingAction = object : AsyncClose<R>() {
+fun <R, T> executeAsyncCleaning(env: R, action: () -> T, cleanAction: (R) -> R): T = run {
+    val closingAction = object : AsyncClose<R> {
         override fun onClose(env: R): R = cleanAction(env)
     }
     val cleaning = AsyncSupport.doOnCleanUp(env, closingAction)
-    val result = try {
+    try {
         action()
     } finally {
         cleaning.cleanUp(env)
     }
-    return result
 }
 
 /**
  * Registry of async cleaning operations.
  */
-sealed class AsyncStack<R>(val actions: Seq<AsyncClosingAction<R>> = List.empty()) {
-    fun doOnCleanUp(action: AsyncClosingAction<R>): DirtyAsyncStack<R> = DirtyAsyncStack(this, List.of(action))
+sealed class AsyncStack<R>(val actions: Seq<AsyncClosingAction<R>> = List.empty()) : Logging {
+    open fun doOnCleanUp(action: AsyncClosingAction<R>): ActiveAsynStack<R> = ActiveAsynStack(this, List.of(action))
 
     open fun enterAsync(): ActiveAsynStack<R> = ActiveAsynStack(this.empty(), actions)
 
@@ -129,32 +117,37 @@ sealed class AsyncStack<R>(val actions: Seq<AsyncClosingAction<R>> = List.empty(
     protected fun performActions(env: R) = actions.foldLeft(env) { r, action ->
         action.onClose(r)
     }
+
+    internal open fun dump(): String = "AsyncStack[${actions.size()}]"
+
+    abstract fun cleanUp(env: R): Pair<AsyncStack<R>, R>
 }
 
 /**
  * Empty registry.
  */
-class CleanAsyncStack<R> : AsyncStack<R>()
+class CleanAsyncStack<R> : AsyncStack<R>() {
+    override fun dump(): String = "CleanAsyncStack[${actions.size()}]"
 
-/**
- * Something is registered.
- */
-class DirtyAsyncStack<R>(val parent: AsyncStack<R>, actions: Seq<AsyncClosingAction<R>>) : AsyncStack<R>(actions) {
-    fun cleanUp(env: R): Pair<AsyncStack<R>, R> = Pair(parent, performActions(env))
-
-    override fun enterAsync(): ActiveAsynStack<R> = ActiveAsynStack(this.parent, actions)
-
-    override fun empty(): AsyncStack<R> = DirtyAsyncStack(parent, List.empty())
+    override fun cleanUp(env: R): Pair<AsyncStack<R>, R> = Pair(this, env)
 }
 
 /**
  * Ongoing async process.
  */
 class ActiveAsynStack<R>(val parent: AsyncStack<R>, actions: Seq<AsyncClosingAction<R>>) : AsyncStack<R>(actions) {
+
+    override fun cleanUp(env: R): Pair<AsyncStack<R>, R> = Pair(parent, performActions(env))
+
+    override fun doOnCleanUp(action: AsyncClosingAction<R>): ActiveAsynStack<R> =
+        ActiveAsynStack(this.parent, actions.prepend(action)) // LESSON - prepend here is critical - do test
+
     fun closeAsync(env: R): Pair<AsyncStack<R>, R> =
         Pair(parent, performActions(env))
 
     override fun empty(): AsyncStack<R> = ActiveAsynStack(parent, List.empty())
+
+    override fun dump(): String = "ActiveAsyncStack[${actions.size()}] parent{${parent.dump()}}"
 }
 
 /**
@@ -166,13 +159,12 @@ interface AsyncClosingAction<R> {
     fun onError(env: R, t: Throwable): R
 }
 
-
-internal abstract class AsyncClose<R> : AsyncClosingAction<R> {
+internal interface AsyncClose<R> : AsyncClosingAction<R> {
     override fun onError(env: R, t: Throwable): R = TODO()
 }
 
-fun <R> AsyncStack<R>.onClose(f: (R) -> R): DirtyAsyncStack<R> = this.doOnCleanUp(
-    object : AsyncClose<R>() {
+fun <R> AsyncStack<R>.onClose(f: (R) -> R): ActiveAsynStack<R> = this.doOnCleanUp(
+    object : AsyncClose<R> {
         override fun onClose(env: R): R = f(env)
     }
 )
@@ -185,7 +177,13 @@ class AsyncEnvWrapper<R>(
 ) : AsyncSupport<R>, Logging {
     override fun asyncStack(): AsyncStack<R> = state.get()
 
-    override fun setAsyncStack(newState: AsyncStack<R>) = state.set(newState).also {
-        logger().debug("assigned state: $newState")
-    }
+    override fun setAsyncStack(oldState: AsyncStack<R>, newState: AsyncStack<R>) =
+        state.compareAndSet(oldState, newState).let { success ->
+            if (success) {
+                logger().debug("assigned state: $newState was $oldState")
+                logger().debug("state is: ${newState.dump()}")
+            } else {
+                logger().warn("failed to assign state: $newState from $oldState")
+            }
+        }
 }

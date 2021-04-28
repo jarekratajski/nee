@@ -1,12 +1,12 @@
 package dev.neeffect.nee.effects.tx
 
-import io.vavr.control.Option
 import dev.neeffect.nee.Effect
 import dev.neeffect.nee.effects.Out
 import dev.neeffect.nee.effects.env.FlexibleEnv
 import dev.neeffect.nee.effects.env.ResourceId
 import dev.neeffect.nee.effects.env.with
 import dev.neeffect.nee.effects.tx.FlexTxProvider.Companion.txProviderResource
+import io.vavr.control.Option
 
 /**
  * Transaction (flexible env version).
@@ -14,7 +14,7 @@ import dev.neeffect.nee.effects.tx.FlexTxProvider.Companion.txProviderResource
 class FlexTxEffect<R> : Effect<FlexibleEnv, TxError> {
     private val internal = TxEffect<R, FlexTxProvider<R>>()
 
-    override fun <A, P> wrap(f: (FlexibleEnv) -> (P) -> A): (FlexibleEnv) -> Pair<(P) -> Out<TxError, A>, FlexibleEnv> =
+    override fun <A> wrap(f: (FlexibleEnv) -> A): (FlexibleEnv) -> Pair<Out<TxError, A>, FlexibleEnv> =
         { env: FlexibleEnv ->
             @Suppress("UNCHECKED_CAST")
             val providerChance = env.get(txProviderResource)
@@ -27,10 +27,9 @@ class FlexTxEffect<R> : Effect<FlexibleEnv, TxError> {
                 val wrapped = internal.wrap(internalF)
                 val result = wrapped(flexProvider)
                 Pair(result.first, result.second.env)
-            }.getOrElse(Pair({ _: P -> Out.left<TxError, A>(TxErrorType.NoConnection) }, env))
+            }.getOrElse(Pair(Out.left<TxError, A>(TxErrorType.NoConnection), env))
         }
 }
-
 
 internal class FlexTxProvider<R>(internal val env: FlexibleEnv) :
     TxProvider<R, FlexTxProvider<R>> {
@@ -53,11 +52,9 @@ internal class FlexTxProvider<R>(internal val env: FlexibleEnv) :
             IllegalStateException("no connection provider")
         }
 
-
     companion object {
         val txProviderResource = ResourceId(TxProvider::class)
 
-        //val flexTxProviderResource = ResourceId(FlexTxProvider::class)
         @Suppress("UNCHECKED_CAST")
         fun <R> connection(env: FlexibleEnv): R =
             env.get(txProviderResource).map {
@@ -74,4 +71,3 @@ fun <R, G : TxProvider<R, G>> FlexibleEnv.withTxProvider(provider: TxProvider<R,
 @Suppress("UNCHECKED_CAST")
 inline fun <reified T : FlexibleEnv, A> ((T) -> A).flex(): (FlexibleEnv) -> A =
     this as (FlexibleEnv) -> A
-

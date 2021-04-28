@@ -1,5 +1,7 @@
 package dev.neeffect.nee.ctx.web
 
+import dev.neeffect.nee.Nee
+import dev.neeffect.nee.ctx.web.support.EmptyTestContext
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeLessThan
@@ -13,8 +15,6 @@ import io.ktor.server.testing.TestApplicationEngine
 import io.ktor.server.testing.createTestEnvironment
 import io.ktor.server.testing.handleRequest
 import kotlinx.coroutines.newFixedThreadPoolContext
-import dev.neeffect.nee.Nee
-import dev.neeffect.nee.ctx.web.support.EmptyTestContext
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
@@ -28,10 +28,10 @@ fun Application.slowApp() {
         }
         get("/fast") {
             val wc = EmptyTestContext.contexProvider.create(call)
-            val result = Nee.constP(EmptyTestContext.contexProvider.fx().async) {
+            val result = Nee.with(EmptyTestContext.contexProvider.fx().async) {
                 Thread.sleep(100)
                 "ok"
-            }.perform(wc)(Unit)
+            }.perform(wc)
             wc.serveMessage(result)
         }
     }

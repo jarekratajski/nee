@@ -1,13 +1,13 @@
 package dev.neeffect.nee.effects.async
 
-import io.kotest.matchers.shouldBe
+import dev.neeffect.nee.Nee
+import dev.neeffect.nee.effects.utils.ignoreR
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
 import io.vavr.collection.List
 import io.vavr.concurrent.Future
 import io.vavr.concurrent.Promise
 import io.vavr.control.Option
-import dev.neeffect.nee.Nee
-import dev.neeffect.nee.effects.utils.ignoreR
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -19,9 +19,9 @@ class AsyncEffectTest : DescribeSpec({
         val eff = AsyncEffect<ECProvider>()
         describe("test function") {
             val runned = AtomicBoolean(false)
-            val testFunction = { _: Unit -> runned.set(true) }
-            val async = Nee.Companion.pure(eff, ignoreR(testFunction))
-            async.perform(ecProvider)(Unit)
+            val testFunction = { runned.set(true) }
+            val async = Nee.Companion.with(eff, ignoreR(testFunction))
+            async.perform(ecProvider)
 
             it("does not run before executor calls") {
                 runned.get() shouldBe false
@@ -36,13 +36,13 @@ class AsyncEffectTest : DescribeSpec({
             //val localProvider = ECProvider(controllableExecutionContext)
             val localEff = AsyncEffect<ECProvider>(Option.some(localEC))
             val runned = AtomicBoolean(false)
-            val testFunction = { _: Unit -> runned.set(true) }
-            val async = Nee.Companion.pure(
+            val testFunction = { runned.set(true) }
+            val async = Nee.Companion.with(
                 localEff,
                 ignoreR(testFunction)
             )
             it("will not run  on global") {
-                async.perform(ecProvider)(Unit)
+                async.perform(ecProvider)
                 controllableExecutionContext.runSingle()
                 runned.get() shouldBe false
             }
